@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS 180 Project 1</title>
+</head>
+<body style="font-family: Verdana;">
+        <h1>CS 180 Project 1 - Geoffrey Xiang</h1>
+        <h2>Background</h2>
+        <p>
+            Sergei Mikhailovich Prokudin-Gorskii foresaw how color was the future for photography. Determined to document the Russian Empire in its true light, he traveled throughout the land while taking 3 photos per scene with a red, green, and blue filter. Although he was never able to see his exposures used to create colored images, the RGB glass plate negatives he left behind were eventually able to be used to reconstruct color pictures of his photographed scenes. This project revives his vision by computationally aligning the RGB glass exposures to reproduce the images in their true colors. 
+        </p>
+        <h2>Image Alignment</h2>
+        <p>
+            To align the 3 exposures for each scene, my main strategy was to continuously overlay the red and green exposures on top of the blue one before using an image matching metric to determine which alignment was the best (metrics discussed further below). For small (.jpg) images, I iteratively searched through a 30 by 30 range of displacements (maximum offset of 15 pixels on each side of the blue image). However, this approach was far too inefficient for large (.tif) images, so I implemented an image pyramid to speed up the process. I found that 6 levels for the image pyramid worked extremely well and was relatively fast (less than 30 seconds) for each of the images. The recursive pyramid scheme first searched through a 128 by 128 range of displacements around the image scaled down by a factor of 32. Taking the resulting displacement vector and scaling it by 2, it then did a 64 by 64 search around that displacement for the original image scaled down by 16. Continuing this process until the base case, a 4 by 4 search on the original image using the previous recursive frame's displacement vector. 
+        </p>
+        <h3 class="keepleft">Image Matching Metrics</h3>
+        <p>
+            <span style="font-weight: bold;">Euclidean Distance (L2 Norm):</span> This was the first metric I tried, where the displacement vector that led to the lowest difference in corresponding pixel values would be the classifsied as the best alignment. This was unsurprisingly the worst metric, likely due to how brightness and contrast could vary between glass negatives, slight noise could introduce big penalties to what should be well-aligned images, and in general RGB values may not be close in value to each other in the actual image. 
+        </p>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/monastery.jpg">
+                <figcaption>Original monastery.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/monastery_l2.jpg"/>
+                <figcaption><div>Euclidean Distance on Pixel Values</div><div>R: [1, 10], G: [0, -6]</div></figcaption>
+            </figure>
+        </div>
+        <p>
+            <span style="font-weight: bold;">Normalized Cross-Correlation:</span> This was the second metric I tried, where the displacement vector that led to the highest NCC score (closest match across normalized pixel values) would be classified as the best alignment. However, it still didn't quite work that well. This was likely due to how real images tend to have varying RGB values per pixel. For instance, a green bush would have a high green value but low red and blue values, but NCC would punish an alignment that matched a high green value to a low blue value. 
+        </p>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/monastery.jpg"/>
+                <figcaption>Original monastery.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/monastery_ncc.jpg"/>
+                <figcaption><div>NCC on Pixel Values</div><div>R: [1, 9], G: [0, -6]</div></figcaption>
+            </figure>
+        </div>
+        <p>
+            <span style="font-weight: bold;">Normalized Cross-Correlation with Edge Detection:</span> This was by far the best metric for alignment since it used edges detected within the images to align them rather than the pixel values, and each RGB pane tended to share the same edge features with each other. I implemented this by first converting each image into a black and white version with just the edges using Canny edge detection before using the same NCC metric as above to find the best displacement vector alignment. I also experimented with Euclidean Distance with Edge Detection, and for the few .jpg images I used, it produced the same result as NCC with Edge Detection.
+        </p>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/monastery.jpg"/>
+                <figcaption>Original monastery.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/monastery_green_edges.jpg"/>
+                <figcaption>Green Image Edges</figcaption>
+            </figure>
+
+            <figure>
+                <img src="assets/monastery_blue_edges.jpg"/>
+                <figcaption>Blue Image Edges</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/monastery_ncc_edges.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [2, 3], G: [2, -3]</div></figcaption>
+            </figure>
+        </div>
+        <h3 class="keepleft">[Bells and Whistles] Automatic Cropping</h3>
+        <p>
+            I implemented automatic border cropping using Canny edge detection. After converting the image into a black and white version with just edges (same process as the last image matching metric), I scanned the borders of the image and looked for rows or columns that were in the 75th percentile for white pixels within their respective region (top, bottom, left, right). By cropping the image at these rows and columns, the sections of the color image that were removed would likely contain the harsh borders. Interestingly, I originally tried to just scan for the 75th percentile of white pixels across the entire image as opposed to just within a certain region of the image. For most images, this worked extremely well and often even better than the current version since it was less aggressive in its cropping and would leave more of the image intact. However, some images with lots of edges within the body of the scene would interfere with the percentile threshold and leave at least 1 side with the harsh border. This caused me to make the white-value comparisons more granular so top edges would only be compared with each other, and this process would apply to the rest of the 3 edges.
+        </p>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/monastery.jpg"/>
+                <figcaption>Original monastery.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/monastery_ncc_edges.jpg"/>
+                <figcaption>NCC with Edge Detection</figcaption>
+            </figure>
+
+            <figure>
+                <img src="assets/monastery_edges.jpg"/>
+                <figcaption>Colored Image Edges</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/monastery.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+
+        <h2>Results</h2>
+        <h3>Cathedral</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/cathedral.jpg"/>
+                <figcaption>Original cathedral.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/cathedral.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [3, 12], G: [2, 5]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/cathedral.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Tobolsk</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/tobolsk.jpg"/>
+                <figcaption>Original tobolsk.jpg</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/tobolsk.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [3, 6], G: [3, 3]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/tobolsk.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Church</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/church.jpg"/>
+                <figcaption>Original church.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/church.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [-4, 58], G: [3, 25]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/church.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Emir</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/emir.jpg"/>
+                <figcaption>Original emir.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/emir.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [40, 107], G: [24, 49]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/emir.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Harvesters</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/harvesters.jpg"/>
+                <figcaption>Original harvesters.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/harvesters.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [11, 125], G: [17, 60]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/harvesters.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Icon</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/icon.jpg"/>
+                <figcaption>Original icon.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/icon.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [23, 89], G: [16, 40]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/icon.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Lady</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/lady.jpg"/>
+                <figcaption>Original lady.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/lady.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [13, 120], G: [10, 56]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/lady.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Melons</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/melons.jpg"/>
+                <figcaption>Original melons.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/melons.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [14, 176], G: [10, 80]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/melons.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Onion Church</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/onion_church.jpg"/>
+                <figcaption>Original onion_church.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/onion_church.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [35, 107], G: [24, 52]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/onion_church.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Sculpture</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/sculpture.jpg"/>
+                <figcaption>Original sculpture.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/sculpture.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [-27, 140], G: [-11, 33]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/sculpture.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Self Portrait</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/self_portrait.jpg"/>
+                <figcaption>Original self_portrait.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/self_portrait.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [37, 175], G: [29, 77]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/self_portrait.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Three Generations</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/three_generations.jpg"/>
+                <figcaption>Original three_generations.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/three_generations.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [12, 115], G: [12, 56]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/three_generations.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+        <h3>Train</h3>
+        <div class="container">
+            <figure>
+                <img src="assets/originals/train.jpg"/>
+                <figcaption>Original train.tif</figcaption>
+            </figure>
+            <figure>
+                <img src="assets/ncc/train.jpg"/>
+                <figcaption><div>NCC with Edge Detection</div><div>R: [29, 85], G: [1, 44]</div></figcaption>
+            </figure>
+            <figure>
+                <img src="assets/cropped/train.jpg"/>
+                <figcaption>Cropped Image</figcaption>
+            </figure>
+        </div>
+
+</body>
+<style>
+    .container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .keepleft {
+        text-align: left;
+    }
+    
+    figure {
+        display: table;
+    }
+
+    figcaption {
+        display: table-caption;
+        caption-side: bottom;
+        text-align: center;
+        font-size: 14px;
+    }
+
+    img {
+        max-height: 300px;
+    }
+
+    h3 {
+        text-align: center;
+    }
+</style>
+</html>
